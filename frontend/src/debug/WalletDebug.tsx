@@ -88,7 +88,7 @@ export default function WalletDebug() {
 
         <div className="bg-gray-50 p-4 rounded-lg">
           <h3 className="font-semibold mb-2">Actions</h3>
-          <div className="space-y-2">
+          <div className="space-y-2">1
             <button
               onClick={handleManualConnect}
               disabled={wallets.length === 0}
