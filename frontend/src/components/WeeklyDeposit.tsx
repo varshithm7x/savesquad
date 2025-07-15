@@ -1,234 +1,294 @@
 import { useState } from 'react'
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit'
 import { Transaction } from '@mysten/sui/transactions'
-import { Coins, Calendar, AlertCircle, CheckCircle, Clock } from 'lucide-react'
+import { Coins, TrendingUp, Calendar, CheckCircle, AlertCircle } from 'lucide-react'
 
-import { CONTRACTS, MIN_DEPOSIT } from '../utils/constants'
-import { formatSui, formatTimeRemaining, cn } from '../utils'
+import { CONTRACTS, DEMO_MODE } from '../utils/constants'
+import { MOCK_SQUADS } from '../utils/mockData'
 
-interface WeeklyDepositProps {
-  squadId: string
-  weeklyTarget: string
-  currentStreak: number
-  timeUntilNextWeek: number
-  hasDepositedThisWeek: boolean
-  onDepositComplete: () => void
-}
-
-export default function WeeklyDeposit({
-  squadId,
-  weeklyTarget,
-  currentStreak,
-  timeUntilNextWeek,
-  hasDepositedThisWeek,
-  onDepositComplete
-}: WeeklyDepositProps) {
+export default function WeeklyDeposit() {
   const currentAccount = useCurrentAccount()
   const { mutate: signAndExecute } = useSignAndExecuteTransaction()
+  
+  const [selectedSquad, setSelectedSquad] = useState('')
+  const [depositAmount, setDepositAmount] = useState('0.005')
   const [loading, setLoading] = useState(false)
-  const [customAmount, setCustomAmount] = useState('')
-  const [showCustomInput, setShowCustomInput] = useState(false)
+  const [success, setSuccess] = useState(false)
 
-  const handleDeposit = async (amount?: string) => {
-    if (!currentAccount || hasDepositedThisWeek) return
+  // Get user's squads (mock data for now)
+  const userSquads = DEMO_MODE ? 
+    MOCK_SQUADS.filter(squad => squad.userIsMember) :
+    [] // Will be replaced with actual squad data
+
+  const handleDeposit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedSquad || !depositAmount) return
+    if (!currentAccount && !DEMO_MODE) return
 
     setLoading(true)
+    
     try {
-      const depositAmount = amount || weeklyTarget
-      const amountInMist = BigInt(parseFloat(depositAmount) * 1_000_000_000)
-
-      // Check if contracts are deployed
-      if (CONTRACTS.PACKAGE_ID === '0x0') {
-        console.warn('Contracts not deployed yet')
-        alert('Contracts not deployed yet. Please deploy contracts first.')
-        setLoading(false)
+      if (DEMO_MODE) {
+        // Demo mode: simulate deposit
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        console.log('Demo: Deposit successful:', {
+          squad: selectedSquad,
+          amount: depositAmount
+        })
+        
+        setSuccess(true)
+        setTimeout(() => setSuccess(false), 3000)
         return
       }
-
+      
       const tx = new Transaction()
       
-      // Create coin for the deposit
-      const [coin] = tx.splitCoins(tx.gas, [amountInMist])
+      // Convert deposit amount to MIST (SUI's smallest unit)
+      const depositMist = BigInt(parseFloat(depositAmount) * 1_000_000_000)
+      
+      // Add coin to transaction
+      const [coin] = tx.splitCoins(tx.gas, [depositMist])
       
       tx.moveCall({
-        target: `${CONTRACTS.PACKAGE_ID}::${CONTRACTS.SQUAD_MODULE}::make_deposit`,
+        package: CONTRACTS.PACKAGE_ID,
+        module: CONTRACTS.SQUAD_MODULE,
+        function: 'make_weekly_deposit',
         arguments: [
-          tx.object(squadId),
+          tx.object(selectedSquad), // Squad object ID
           coin,
-          tx.object('0x6'), // Clock object ID
+          tx.object('0x6'), // Clock object
         ],
       })
 
       signAndExecute(
-        { transaction: tx },
         {
-          onSuccess: () => {
-            console.log('Weekly deposit successful')
-            onDepositComplete()
+          transaction: tx,
+        },
+        {
+          onSuccess: (result) => {
+            console.log('Deposit successful:', result)
+            setSuccess(true)
+            setTimeout(() => setSuccess(false), 3000)
           },
           onError: (error) => {
-            console.error('Weekly deposit failed:', error)
-          }
+            console.error('Error making deposit:', error)
+          },
         }
       )
     } catch (error) {
-      console.error('Error making weekly deposit:', error)
+      console.error('Transaction error:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCustomDeposit = () => {
-    if (customAmount && parseFloat(customAmount) > 0) {
-      handleDeposit(customAmount)
-    }
-  }
-
-  const isTimeToDeposit = timeUntilNextWeek > 0
-  const canDeposit = isTimeToDeposit && !hasDepositedThisWeek
+  const selectedSquadData = userSquads.find(squad => squad.id === selectedSquad)
 
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">Weekly Deposit</h3>
-        <div className="flex items-center space-x-2">
-          {hasDepositedThisWeek ? (
-            <CheckCircle className="w-5 h-5 text-green-600" />
-          ) : (
-            <Clock className="w-5 h-5 text-orange-600" />
-          )}
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="text-center">
+        <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Coins className="w-8 h-8 text-white" />
         </div>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Weekly Deposit</h2>
+        <p className="text-gray-600">Make your weekly contribution to stay on track with your savings goals</p>
       </div>
 
-      {/* Status Card */}
-      <div className={cn(
-        "rounded-lg p-4 mb-4",
-        hasDepositedThisWeek 
-          ? "bg-green-50 border border-green-200" 
-          : canDeposit 
-            ? "bg-blue-50 border border-blue-200"
-            : "bg-red-50 border border-red-200"
-      )}>
-        {hasDepositedThisWeek ? (
-          <div className="flex items-center">
-            <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-            <div>
-              <p className="text-sm font-medium text-green-800">
-                Deposit Complete! 🎉
-              </p>
-              <p className="text-sm text-green-600">
-                You've maintained your {currentStreak}-week streak
-              </p>
-            </div>
-          </div>
-        ) : canDeposit ? (
-          <div className="flex items-center">
-            <Coins className="w-5 h-5 text-blue-600 mr-2" />
-            <div>
-              <p className="text-sm font-medium text-blue-800">
-                Time to make your weekly deposit!
-              </p>
-              <p className="text-sm text-blue-600">
-                {formatTimeRemaining(timeUntilNextWeek)} left to maintain streak
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center">
-            <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
-            <div>
-              <p className="text-sm font-medium text-red-800">
-                Deposit window closed
-              </p>
-              <p className="text-sm text-red-600">
-                Wait for next week to start a new streak
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Deposit Options */}
-      {canDeposit && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <div>
-              <p className="text-sm font-medium text-gray-900">Weekly Target</p>
-              <p className="text-sm text-gray-600">{formatSui(BigInt(parseFloat(weeklyTarget) * 1_000_000_000))} SUI</p>
-            </div>
-            <button
-              onClick={() => handleDeposit()}
-              disabled={loading}
-              className="btn btn-primary"
-            >
-              {loading ? 'Processing...' : 'Deposit Target'}
+      {userSquads.length === 0 ? (
+        /* No Squads State */
+        <div className="card p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">No Active Squads</h3>
+          <p className="text-gray-600 mb-4">You need to join or create a squad before making deposits.</p>
+          <div className="flex justify-center space-x-4">
+            <button className="btn btn-primary">
+              Create Squad
+            </button>
+            <button className="btn btn-secondary">
+              Browse Squads
             </button>
           </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300" />
+        </div>
+      ) : (
+        /* Deposit Form */
+        <div className="card p-8">
+          <form onSubmit={handleDeposit} className="space-y-6">
+            {/* Squad Selection */}
+            <div>
+              <label htmlFor="squad" className="block text-sm font-medium text-gray-700 mb-2">
+                Select Squad *
+              </label>
+              <select
+                id="squad"
+                value={selectedSquad}
+                onChange={(e) => setSelectedSquad(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option value="">Choose a squad...</option>
+                {userSquads.map((squad) => (
+                  <option key={squad.id} value={squad.id}>
+                    {squad.name} (Target: {squad.weeklyTarget} SUI)
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">or</span>
-            </div>
-          </div>
 
-          <div className="space-y-3">
-            <button
-              onClick={() => setShowCustomInput(!showCustomInput)}
-              className="w-full p-3 text-left border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-900">
-                  Custom Amount
-                </span>
-                <span className="text-sm text-gray-500">
-                  {showCustomInput ? 'Hide' : 'Show'}
-                </span>
-              </div>
-            </button>
-
-            {showCustomInput && (
-              <div className="space-y-3">
-                <div className="flex">
-                  <input
-                    type="number"
-                    step="0.001"
-                    min="0.001"
-                    value={customAmount}
-                    onChange={(e) => setCustomAmount(e.target.value)}
-                    placeholder="Enter amount in SUI"
-                    className="flex-1 input"
-                  />
-                  <button
-                    onClick={handleCustomDeposit}
-                    disabled={loading || !customAmount || parseFloat(customAmount) <= 0}
-                    className="ml-2 btn btn-primary"
-                  >
-                    Deposit
-                  </button>
+            {/* Squad Info */}
+            {selectedSquadData && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-900 mb-2">{selectedSquadData.name}</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-blue-700">Weekly Target:</span>
+                    <div className="font-medium text-blue-900">{selectedSquadData.weeklyTarget} SUI</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-700">Total Pool:</span>
+                    <div className="font-medium text-blue-900">{selectedSquadData.totalPool} SUI</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-700">Members:</span>
+                    <div className="font-medium text-blue-900">{selectedSquadData.members} people</div>
+                  </div>
+                  <div>
+                    <span className="text-blue-700">Status:</span>
+                    <div className="font-medium text-green-900">Active</div>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500">
-                  Minimum: {formatSui(MIN_DEPOSIT)} SUI
-                </p>
               </div>
             )}
-          </div>
+
+            {/* Deposit Amount */}
+            <div>
+              <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-2">
+                Deposit Amount (SUI) *
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  id="amount"
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(e.target.value)}
+                  min="0.001"
+                  step="0.001"
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  placeholder="0.005"
+                />
+                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 text-sm">SUI</span>
+                </div>
+              </div>
+              {selectedSquadData && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Squad target: {selectedSquadData.weeklyTarget} SUI per week
+                </p>
+              )}
+            </div>
+
+            {/* Quick Amount Buttons */}
+            {selectedSquadData && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Quick Select:</label>
+                <div className="flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setDepositAmount(selectedSquadData.weeklyTarget)}
+                    className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  >
+                    Target ({selectedSquadData.weeklyTarget} SUI)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDepositAmount((parseFloat(selectedSquadData.weeklyTarget) * 1.5).toFixed(3))}
+                    className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  >
+                    1.5x Target
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDepositAmount((parseFloat(selectedSquadData.weeklyTarget) * 2).toFixed(3))}
+                    className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  >
+                    2x Target
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading || !selectedSquad || !depositAmount}
+              className="btn btn-primary w-full py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Processing Deposit...</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center space-x-2">
+                  <Coins className="w-5 h-5" />
+                  <span>Make Deposit</span>
+                </div>
+              )}
+            </button>
+
+            {/* Success Message */}
+            {success && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                <div className="text-green-800 font-semibold mb-1">Deposit Successful! 🎉</div>
+                <p className="text-green-600 text-sm">Your weekly contribution has been recorded.</p>
+              </div>
+            )}
+          </form>
         </div>
       )}
 
-      {/* Next Week Countdown */}
-      {!canDeposit && !hasDepositedThisWeek && (
-        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+      {/* Benefits Reminder */}
+      <div className="card p-6 bg-green-50 border-green-200">
+        <h4 className="font-semibold text-green-900 mb-3 flex items-center">
+          <TrendingUp className="w-5 h-5 mr-2" />
+          Benefits of Regular Deposits:
+        </h4>
+        <ul className="space-y-2 text-sm text-green-800">
+          <li>• Earn Squad Tokens for every successful deposit</li>
+          <li>• Build your weekly streak and unlock bonus rewards</li>
+          <li>• Support your squad's collective savings goals</li>
+          <li>• Qualify for exclusive NFT rewards</li>
+          <li>• Create positive social accountability</li>
+        </ul>
+      </div>
+
+      {/* Timeline */}
+      <div className="card p-6">
+        <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
+          <Calendar className="w-5 h-5 mr-2" />
+          Deposit Timeline:
+        </h4>
+        <div className="space-y-3 text-sm">
           <div className="flex items-center">
-            <Calendar className="w-4 h-4 text-gray-600 mr-2" />
-            <span className="text-sm text-gray-600">
-              Next deposit window opens in {formatTimeRemaining(timeUntilNextWeek)}
-            </span>
+            <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
+            <span className="text-gray-700">Every Monday - New week begins</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-blue-500 rounded-full mr-3"></div>
+            <span className="text-gray-700">Monday-Sunday - Make your weekly deposit</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-purple-500 rounded-full mr-3"></div>
+            <span className="text-gray-700">Sunday 11:59 PM - Week deadline</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-orange-500 rounded-full mr-3"></div>
+            <span className="text-gray-700">After deadline - Rewards distributed</span>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

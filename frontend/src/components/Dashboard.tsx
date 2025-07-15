@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useCurrentAccount, useSuiClient } from '@mysten/dapp-kit'
-import { TrendingUp, Users, Coins, Target } from 'lucide-react'
+import { TrendingUp, Users, Coins, Clock, Target } from 'lucide-react'
 
-import { cn, formatSui, formatSquadTokens, getTimeUntilNextWeek } from '../utils'
-import { CONTRACTS } from '../utils/constants'
-import { getUserBalance } from '../utils/contracts'
-import WeeklyDeposit from './WeeklyDeposit'
-import SquadMembers from './SquadMembers'
+import { cn, getTimeUntilNextWeek, formatTimeRemaining } from '../utils'
+import { DEMO_MODE } from '../utils/constants'
+import { MOCK_USER_STATS } from '../utils/mockData'
 
 interface DashboardStats {
   totalSquads: number
@@ -29,44 +27,33 @@ export default function Dashboard() {
   const [timeUntilNextWeek, setTimeUntilNextWeek] = useState<number>(0)
 
   useEffect(() => {
-    async function fetchData() {
-      if (!currentAccount) return
-      
-      // Check if contracts are deployed (package ID is set)
-      if (CONTRACTS.PACKAGE_ID === '0x0') {
-        // Contracts not deployed yet, show placeholder data
-        setStats({
-          totalSquads: 0,
-          totalDeposited: '0.000',
-          currentStreak: 0,
-          tokensEarned: '0.00',
-          nextMilestone: { name: 'Bronze', weeksRemaining: 4 }
-        })
-        return
-      }
-      
-      // TODO: Replace with actual treasuryId and squadId after deployment
-      const treasuryId = 'REPLACE_WITH_TREASURY_ID'
-      const userBalance = await getUserBalance(suiClient, treasuryId, currentAccount.address)
-      
+    if (DEMO_MODE) {
+      // Use mock data in demo mode
       setStats({
-        totalSquads: 1, // TODO: fetch real squad count
-        totalDeposited: formatSui(BigInt(userBalance.totalBalance)),
-        currentStreak: 0, // TODO: fetch real streak
-        tokensEarned: formatSquadTokens(BigInt(userBalance.totalBalance)),
-        nextMilestone: { name: 'Bronze', weeksRemaining: 4 } // TODO: calculate from real data
+        totalSquads: MOCK_USER_STATS.squadCount,
+        totalDeposited: MOCK_USER_STATS.totalDeposited,
+        currentStreak: MOCK_USER_STATS.weeklyStreakCount,
+        tokensEarned: MOCK_USER_STATS.totalSquadTokens,
+        nextMilestone: { name: 'Bronze', weeksRemaining: 1 }
+      })
+    } else {
+      // Mock data for now - replace with actual contract calls
+      setStats({
+        totalSquads: 2,
+        totalDeposited: '0.024',
+        currentStreak: 3,
+        tokensEarned: '15.50',
+        nextMilestone: { name: 'Bronze', weeksRemaining: 1 }
       })
     }
-    
-    fetchData()
-    
+
     // Update countdown every minute
     const interval = setInterval(() => {
       const now = Date.now()
       const squadStart = now - (3 * 7 * 24 * 60 * 60 * 1000) // 3 weeks ago
       setTimeUntilNextWeek(getTimeUntilNextWeek(squadStart, now))
     }, 60000)
-    
+
     return () => clearInterval(interval)
   }, [currentAccount, suiClient])
 
@@ -164,22 +151,36 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Weekly Deposit */}
-        <WeeklyDeposit
-          squadId={'0x1234567890'}
-          weeklyTarget="0.005"
-          currentStreak={stats.currentStreak}
-          timeUntilNextWeek={timeUntilNextWeek}
-          hasDepositedThisWeek={false}
-          onDepositComplete={() => {
-            // Refresh dashboard data
-            window.location.reload()
-          }}
-        />
+        {/* Next Deposit */}
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Next Deposit</h3>
+            <Clock className="w-5 h-5 text-blue-600" />
+          </div>
+          
+          <div className="space-y-4">
+            <div className="text-center">
+              <p className="text-3xl font-bold text-blue-600 mb-1">
+                {formatTimeRemaining(timeUntilNextWeek)}
+              </p>
+              <p className="text-sm text-gray-600">until next week</p>
+            </div>
+            
+            <div className="bg-blue-50 rounded-lg p-4">
+              <p className="text-sm text-blue-800 font-medium mb-2">
+                Don't break your streak!
+              </p>
+              <p className="text-xs text-blue-600">
+                Make sure to deposit at least 0.001 SUI before the week ends to maintain your {stats.currentStreak}-week streak.
+              </p>
+            </div>
+            
+            <button className="btn btn-primary w-full">
+              Make Deposit Now
+            </button>
+          </div>
+        </div>
       </div>
-
-      {/* Squad Members */}
-      <SquadMembers squadId={'0x1234567890'} />
 
       {/* Recent Activity */}
       <div className="card p-6">

@@ -1,383 +1,326 @@
 import { useState, useEffect } from 'react'
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit'
 import { Transaction } from '@mysten/sui/transactions'
-import { Trophy, Medal, Star, Crown, Gem, Gift, CheckCircle, Lock } from 'lucide-react'
+import { Gift, Star, Coins, Award, Zap, CheckCircle } from 'lucide-react'
 
-import { cn } from '../utils'
-import { CONTRACTS, CONTRACT_OBJECTS, MILESTONES } from '../utils/constants'
+import { CONTRACTS, DEMO_MODE } from '../utils/constants'
+import { MOCK_USER_STATS } from '../utils/mockData'
 
-interface NFTMilestone {
-  type: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
-  requirement: number
-  name: string
+interface ClaimableReward {
+  id: string
+  type: 'tokens' | 'nft' | 'bonus'
+  amount: string
   description: string
-  isUnlocked: boolean
-  isClaimed: boolean
-  canClaim: boolean
+  week: number
+  squad: string
+  claimed: boolean
 }
 
-interface ClaimPageProps {
-  currentStreak: number
-  squadTokensBalance: string
-  canClaimReward: boolean
-  squadId: string
-  onClaimComplete: () => void
-}
-
-export default function ClaimPage({ 
-  currentStreak, 
-  squadTokensBalance, 
-  canClaimReward,
-  squadId,
-  onClaimComplete 
-}: ClaimPageProps) {
+export default function ClaimPage() {
   const currentAccount = useCurrentAccount()
   const { mutate: signAndExecute } = useSignAndExecuteTransaction()
-  const [loading, setLoading] = useState(false)
-  const [claimingType, setClaimingType] = useState<'tokens' | 'nft' | null>(null)
-  const [milestones, setMilestones] = useState<NFTMilestone[]>([])
+  
+  const [claimableRewards, setClaimableRewards] = useState<ClaimableReward[]>([])
+  const [claiming, setClaiming] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [loading, setLoading] = useState(!DEMO_MODE)
 
   useEffect(() => {
-    initializeMilestones()
-  }, [currentStreak])
+    if (DEMO_MODE) {
+      // Mock claimable rewards
+      setClaimableRewards([
+        {
+          id: 'reward-1',
+          type: 'tokens',
+          amount: '12.50',
+          description: 'Weekly deposit completion bonus',
+          week: 3,
+          squad: 'College Savings Squad',
+          claimed: false
+        },
+        {
+          id: 'reward-2',
+          type: 'nft',
+          amount: '1',
+          description: 'Three-week streak achievement',
+          week: 3,
+          squad: 'College Savings Squad',
+          claimed: false
+        },
+        {
+          id: 'reward-3',
+          type: 'bonus',
+          amount: '5.75',
+          description: 'Squad leadership bonus',
+          week: 2,
+          squad: 'Emergency Fund Warriors',
+          claimed: true
+        },
+        {
+          id: 'reward-4',
+          type: 'tokens',
+          amount: '8.25',
+          description: 'Perfect attendance bonus',
+          week: 2,
+          squad: 'College Savings Squad',
+          claimed: false
+        }
+      ])
+      setLoading(false)
+    } else {
+      // TODO: Fetch actual claimable rewards from blockchain
+      setLoading(false)
+    }
+  }, [currentAccount])
 
-  const initializeMilestones = () => {
-    const allMilestones: NFTMilestone[] = [
-      {
-        type: 'Bronze',
-        requirement: MILESTONES.BRONZE,
-        name: 'Bronze Streak Badge',
-        description: 'Complete 4 weeks of consistent deposits',
-        isUnlocked: currentStreak >= MILESTONES.BRONZE,
-        isClaimed: false,
-        canClaim: currentStreak >= MILESTONES.BRONZE
-      },
-      {
-        type: 'Silver',
-        requirement: MILESTONES.SILVER,
-        name: 'Silver Streak Badge',
-        description: 'Complete 8 weeks of consistent deposits',
-        isUnlocked: currentStreak >= MILESTONES.SILVER,
-        isClaimed: false,
-        canClaim: currentStreak >= MILESTONES.SILVER
-      },
-      {
-        type: 'Gold',
-        requirement: MILESTONES.GOLD,
-        name: 'Gold Streak Badge',
-        description: 'Complete 12 weeks of consistent deposits',
-        isUnlocked: currentStreak >= MILESTONES.GOLD,
-        isClaimed: false,
-        canClaim: currentStreak >= MILESTONES.GOLD
-      },
-      {
-        type: 'Diamond',
-        requirement: MILESTONES.DIAMOND,
-        name: 'Diamond Streak Badge',
-        description: 'Complete 24 weeks of consistent deposits',
-        isUnlocked: currentStreak >= MILESTONES.DIAMOND,
-        isClaimed: false,
-        canClaim: currentStreak >= MILESTONES.DIAMOND
-      }
-    ]
+  const handleClaim = async (reward: ClaimableReward) => {
+    if (!currentAccount && !DEMO_MODE) return
 
-    // TODO: Check owned NFTs from blockchain when contracts are deployed
-    // For now, all NFTs are claimable if unlocked
-    setMilestones(allMilestones)
-  }
-
-  const handleClaimTokens = async () => {
-    if (!currentAccount || !canClaimReward) return
-    
-    setClaimingType('tokens')
-    setLoading(true)
+    setClaiming(reward.id)
     
     try {
-      // Contracts deployment check
-      if (CONTRACTS.PACKAGE_ID === '0x0') {
-        console.warn('Contracts not deployed yet');
-        alert('Contracts not deployed yet. Please deploy contracts first.');
-        return;
+      if (DEMO_MODE) {
+        // Demo mode: simulate claiming
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        console.log('Demo: Claimed reward:', reward)
+        
+        // Update reward as claimed
+        setClaimableRewards(prev => 
+          prev.map(r => r.id === reward.id ? { ...r, claimed: true } : r)
+        )
+        
+        setSuccess(reward.id)
+        setTimeout(() => setSuccess(null), 3000)
+        return
       }
       
       const tx = new Transaction()
       
-      // Get the actual treasury ID from our deployed contracts
-      const treasuryId = CONTRACT_OBJECTS.TREASURY
-      
-      tx.moveCall({
-        target: `${CONTRACTS.PACKAGE_ID}::${CONTRACTS.REWARDS_MODULE}::claim_rewards`,
-        arguments: [
-          tx.object(treasuryId),
-          tx.object(squadId),
-          tx.object('0x6'), // Clock object
-        ],
-      })
-
-      signAndExecute(
-        { transaction: tx },
-        {
-          onSuccess: () => {
-            console.log('Tokens claimed successfully')
-            onClaimComplete()
-          },
-          onError: (error) => {
-            console.error('Error claiming tokens:', error)
-          }
-        }
-      )
-    } catch (error) {
-      console.error('Error claiming tokens:', error)
-    } finally {
-      setLoading(false)
-      setClaimingType(null)
-    }
-  }
-
-  const handleClaimNFT = async (milestone: NFTMilestone) => {
-    if (!currentAccount || !milestone.canClaim || milestone.isClaimed) return
-    
-    setClaimingType('nft')
-    setLoading(true)
-    
-    try {
-      // Contracts deployment check
-      if (CONTRACTS.PACKAGE_ID === '0x0') {
-        console.warn('Contracts not deployed yet');
-        alert('Contracts not deployed yet. Please deploy contracts first.');
-        return;
+      if (reward.type === 'tokens') {
+        tx.moveCall({
+          package: CONTRACTS.PACKAGE_ID,
+          module: CONTRACTS.REWARDS_MODULE,
+          function: 'claim_squad_tokens',
+          arguments: [
+            tx.object(reward.id), // Reward object ID
+          ],
+        })
+      } else if (reward.type === 'nft') {
+        tx.moveCall({
+          package: CONTRACTS.PACKAGE_ID,
+          module: CONTRACTS.NFT_MODULE,
+          function: 'claim_achievement_nft',
+          arguments: [
+            tx.object(reward.id), // Achievement object ID
+          ],
+        })
       }
-      
-      const tx = new Transaction()
-      
-      const registryId = '0x1234567890123456789012345678901234567890123456789012345678901234'
-      const squadId = '0x1234567890123456789012345678901234567890123456789012345678901234'
-      
-      tx.moveCall({
-        target: `${CONTRACTS.PACKAGE_ID}::${CONTRACTS.NFT_MODULE}::mint_milestone_nft`,
-        arguments: [
-          tx.object(registryId),
-          tx.object(squadId),
-          tx.object('0x6'), // Clock object
-        ],
-      })
 
       signAndExecute(
-        { transaction: tx },
         {
-          onSuccess: () => {
-            console.log('NFT minted successfully')
-            onClaimComplete()
+          transaction: tx,
+        },
+        {
+          onSuccess: (result) => {
+            console.log('Reward claimed successfully:', result)
+            setClaimableRewards(prev => 
+              prev.map(r => r.id === reward.id ? { ...r, claimed: true } : r)
+            )
+            setSuccess(reward.id)
+            setTimeout(() => setSuccess(null), 3000)
           },
           onError: (error) => {
-            console.error('Error minting NFT:', error)
-          }
+            console.error('Error claiming reward:', error)
+          },
         }
       )
     } catch (error) {
-      console.error('Error claiming NFT:', error)
+      console.error('Transaction error:', error)
     } finally {
-      setLoading(false)
-      setClaimingType(null)
+      setClaiming(null)
     }
   }
 
-  const getMilestoneIcon = (type: string) => {
+  const unclaimedRewards = claimableRewards.filter(r => !r.claimed)
+  const claimedRewards = claimableRewards.filter(r => r.claimed)
+  const totalUnclaimedTokens = unclaimedRewards
+    .filter(r => r.type === 'tokens' || r.type === 'bonus')
+    .reduce((sum, r) => sum + parseFloat(r.amount), 0)
+
+  const getRewardIcon = (type: string) => {
     switch (type) {
-      case 'Bronze': return Medal
-      case 'Silver': return Star
-      case 'Gold': return Crown
-      case 'Diamond': return Gem
-      default: return Trophy
+      case 'tokens': return <Coins className="w-6 h-6 text-yellow-600" />
+      case 'nft': return <Award className="w-6 h-6 text-purple-600" />
+      case 'bonus': return <Zap className="w-6 h-6 text-blue-600" />
+      default: return <Gift className="w-6 h-6 text-gray-600" />
     }
   }
 
-  const getMilestoneColor = (type: string) => {
+  const getRewardColor = (type: string) => {
     switch (type) {
-      case 'Bronze': return 'text-orange-600 bg-orange-100 border-orange-200'
-      case 'Silver': return 'text-gray-600 bg-gray-100 border-gray-200'
-      case 'Gold': return 'text-yellow-600 bg-yellow-100 border-yellow-200'
-      case 'Diamond': return 'text-purple-600 bg-purple-100 border-purple-200'
-      default: return 'text-blue-600 bg-blue-100 border-blue-200'
+      case 'tokens': return 'border-yellow-200 bg-yellow-50'
+      case 'nft': return 'border-purple-200 bg-purple-50'
+      case 'bonus': return 'border-blue-200 bg-blue-50'
+      default: return 'border-gray-200 bg-gray-50'
     }
   }
 
-  const claimableTokens = canClaimReward ? '10.0' : '0.0'
-  const claimableNFTs = milestones.filter(m => m.canClaim && !m.isClaimed).length
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your rewards...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          Claim Your Rewards
-        </h2>
-        <p className="text-gray-600">
-          Claim your earned SQUAD tokens and milestone NFTs
-        </p>
+        <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Gift className="w-8 h-8 text-white" />
+        </div>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Claim Rewards</h2>
+        <p className="text-gray-600">Collect your earned Squad Tokens, NFTs, and bonus rewards</p>
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="card p-6 text-center">
-          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Gift className="w-6 h-6 text-blue-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Available Tokens</h3>
-          <p className="text-3xl font-bold text-blue-600">{claimableTokens}</p>
-          <p className="text-sm text-gray-600 mt-1">SQUAD tokens ready</p>
+          <Coins className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
+          <div className="text-2xl font-bold text-gray-900">{totalUnclaimedTokens.toFixed(2)}</div>
+          <div className="text-sm text-gray-600">Unclaimed Tokens</div>
         </div>
-
+        
         <div className="card p-6 text-center">
-          <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Trophy className="w-6 h-6 text-purple-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Claimable NFTs</h3>
-          <p className="text-3xl font-bold text-purple-600">{claimableNFTs}</p>
-          <p className="text-sm text-gray-600 mt-1">New badges available</p>
+          <Award className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+          <div className="text-2xl font-bold text-gray-900">{unclaimedRewards.filter(r => r.type === 'nft').length}</div>
+          <div className="text-sm text-gray-600">NFTs Available</div>
         </div>
-
+        
         <div className="card p-6 text-center">
-          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-6 h-6 text-green-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Total Balance</h3>
-          <p className="text-3xl font-bold text-green-600">{squadTokensBalance}</p>
-          <p className="text-sm text-gray-600 mt-1">SQUAD tokens owned</p>
+          <Star className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+          <div className="text-2xl font-bold text-gray-900">{DEMO_MODE ? MOCK_USER_STATS.currentStreak : 0}</div>
+          <div className="text-sm text-gray-600">Current Streak</div>
         </div>
       </div>
 
-      {/* Claim Tokens Section */}
+      {/* Unclaimed Rewards */}
       <div className="card p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Claim SQUAD Tokens</h3>
+        <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+          <Gift className="w-5 h-5 mr-2 text-green-600" />
+          Available Rewards ({unclaimedRewards.length})
+        </h3>
         
-        {canClaimReward ? (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center">
-              <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-              <div>
-                <p className="text-sm font-medium text-green-800">
-                  {claimableTokens} SQUAD tokens ready to claim!
-                </p>
-                <p className="text-xs text-green-600">
-                  Reward for maintaining your streak this week
-                </p>
-              </div>
-            </div>
+        {unclaimedRewards.length === 0 ? (
+          <div className="text-center py-8">
+            <Gift className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h4 className="text-lg font-medium text-gray-900 mb-2">No Rewards Available</h4>
+            <p className="text-gray-600">Complete weekly deposits to earn rewards!</p>
           </div>
         ) : (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center">
-              <Lock className="w-5 h-5 text-gray-600 mr-2" />
-              <div>
-                <p className="text-sm font-medium text-gray-800">
-                  No tokens available to claim
-                </p>
-                <p className="text-xs text-gray-600">
-                  Make your weekly deposit to earn tokens
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <button
-          onClick={handleClaimTokens}
-          disabled={!canClaimReward || loading || claimingType === 'tokens'}
-          className={cn(
-            'btn w-full',
-            canClaimReward ? 'btn-primary' : 'btn-secondary'
-          )}
-        >
-          {claimingType === 'tokens' ? 'Claiming...' : 'Claim Tokens'}
-        </button>
-      </div>
-
-      {/* NFT Milestones Section */}
-      <div className="card p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Milestone NFTs</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {milestones.map((milestone) => {
-            const Icon = getMilestoneIcon(milestone.type)
-            const colorClass = getMilestoneColor(milestone.type)
-            
-            return (
-              <div 
-                key={milestone.type}
-                className={cn(
-                  'border rounded-lg p-4 transition-all',
-                  milestone.isUnlocked 
-                    ? colorClass
-                    : 'border-gray-200 bg-gray-50'
-                )}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center space-x-3">
-                    <div className={cn(
-                      'w-10 h-10 rounded-full flex items-center justify-center',
-                      milestone.isUnlocked ? colorClass : 'bg-gray-200'
-                    )}>
-                      <Icon className={cn(
-                        'w-5 h-5',
-                        milestone.isUnlocked ? '' : 'text-gray-400'
-                      )} />
-                    </div>
+          <div className="space-y-4">
+            {unclaimedRewards.map((reward) => (
+              <div key={reward.id} className={`border rounded-lg p-4 ${getRewardColor(reward.type)}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    {getRewardIcon(reward.type)}
                     <div>
-                      <h4 className={cn(
-                        'font-medium',
-                        milestone.isUnlocked ? 'text-gray-900' : 'text-gray-500'
-                      )}>
-                        {milestone.name}
-                      </h4>
-                      <p className={cn(
-                        'text-sm',
-                        milestone.isUnlocked ? 'text-gray-600' : 'text-gray-400'
-                      )}>
-                        {milestone.requirement} week streak
+                      <h4 className="font-semibold text-gray-900">{reward.description}</h4>
+                      <p className="text-sm text-gray-600">
+                        Week {reward.week} • {reward.squad}
                       </p>
+                      <div className="text-lg font-bold text-gray-900 mt-1">
+                        {reward.type === 'nft' ? `${reward.amount} NFT` : `${reward.amount} Tokens`}
+                      </div>
                     </div>
                   </div>
                   
-                  {milestone.isClaimed && (
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                  )}
+                  <div className="flex items-center space-x-3">
+                    {success === reward.id && (
+                      <div className="flex items-center text-green-600">
+                        <CheckCircle className="w-5 h-5 mr-1" />
+                        <span className="text-sm font-medium">Claimed!</span>
+                      </div>
+                    )}
+                    
+                    <button
+                      onClick={() => handleClaim(reward)}
+                      disabled={claiming === reward.id || success === reward.id}
+                      className="btn btn-primary px-6 py-2 disabled:opacity-50"
+                    >
+                      {claiming === reward.id ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <span>Claiming...</span>
+                        </div>
+                      ) : success === reward.id ? (
+                        'Claimed!'
+                      ) : (
+                        'Claim'
+                      )}
+                    </button>
+                  </div>
                 </div>
-                
-                <p className={cn(
-                  'text-sm mb-4',
-                  milestone.isUnlocked ? 'text-gray-600' : 'text-gray-400'
-                )}>
-                  {milestone.description}
-                </p>
-                
-                {milestone.isClaimed ? (
-                  <div className="flex items-center justify-center py-2 bg-green-100 rounded-lg">
-                    <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                    <span className="text-sm font-medium text-green-700">Claimed</span>
-                  </div>
-                ) : milestone.canClaim ? (
-                  <button
-                    onClick={() => handleClaimNFT(milestone)}
-                    disabled={loading || claimingType === 'nft'}
-                    className="btn btn-primary w-full"
-                  >
-                    {claimingType === 'nft' ? 'Minting...' : 'Claim NFT'}
-                  </button>
-                ) : (
-                  <div className="flex items-center justify-center py-2 bg-gray-100 rounded-lg">
-                    <Lock className="w-4 h-4 text-gray-500 mr-2" />
-                    <span className="text-sm font-medium text-gray-600">
-                      {currentStreak}/{milestone.requirement} weeks
-                    </span>
-                  </div>
-                )}
               </div>
-            )
-          })}
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Claimed Rewards History */}
+      {claimedRewards.length > 0 && (
+        <div className="card p-6">
+          <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+            <CheckCircle className="w-5 h-5 mr-2 text-green-600" />
+            Claimed Rewards ({claimedRewards.length})
+          </h3>
+          
+          <div className="space-y-3">
+            {claimedRewards.map((reward) => (
+              <div key={reward.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50 opacity-75">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    {getRewardIcon(reward.type)}
+                    <div>
+                      <h4 className="font-medium text-gray-900">{reward.description}</h4>
+                      <p className="text-sm text-gray-600">
+                        Week {reward.week} • {reward.squad}
+                      </p>
+                      <div className="text-lg font-semibold text-gray-700 mt-1">
+                        {reward.type === 'nft' ? `${reward.amount} NFT` : `${reward.amount} Tokens`}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center text-green-600">
+                    <CheckCircle className="w-5 h-5 mr-1" />
+                    <span className="text-sm font-medium">Claimed</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
+      )}
+
+      {/* Next Rewards Info */}
+      <div className="card p-6 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
+        <h4 className="font-semibold text-blue-900 mb-3 flex items-center">
+          <Star className="w-5 h-5 mr-2" />
+          Upcoming Rewards:
+        </h4>
+        <ul className="space-y-2 text-sm text-blue-800">
+          <li>• Complete this week's deposit to earn 15+ Squad Tokens</li>
+          <li>• Maintain your streak for streak bonus multipliers</li>
+          <li>• Reach week 5 to unlock your first achievement NFT</li>
+          <li>• Help squad reach monthly goals for bonus rewards</li>
+          <li>• Invite friends to earn referral bonuses</li>
+        </ul>
       </div>
     </div>
   )
 }
-

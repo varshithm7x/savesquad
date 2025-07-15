@@ -3,7 +3,7 @@ import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-ki
 import { Transaction } from '@mysten/sui/transactions'
 import { Plus, Users, Target, Clock } from 'lucide-react'
 
-import { CONTRACTS, MIN_DEPOSIT } from '../utils/constants'
+import { CONTRACTS, MIN_DEPOSIT, DEMO_MODE } from '../utils/constants'
 
 export default function CreateSquad() {
   const currentAccount = useCurrentAccount()
@@ -15,19 +15,30 @@ export default function CreateSquad() {
     description: ''
   })
   const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!currentAccount) return
+    if (!currentAccount && !DEMO_MODE) return
 
     setLoading(true)
     
     try {
-      // Check if contracts are deployed
-      if (CONTRACTS.PACKAGE_ID === '0x0') {
-        console.warn('Contracts not deployed yet. Please update PACKAGE_ID in constants.ts')
-        alert('Contracts not deployed yet. Please deploy contracts first.')
-        setLoading(false)
+      if (DEMO_MODE) {
+        // Demo mode: simulate squad creation
+        await new Promise(resolve => setTimeout(resolve, 2000)) // Simulate network delay
+        console.log('Demo: Squad created successfully:', {
+          name: formData.name,
+          weeklyTarget: formData.weeklyTarget,
+          description: formData.description
+        })
+        
+        // Reset form and show success
+        setFormData({ name: '', weeklyTarget: '0.005', description: '' })
+        setSuccess(true)
+        
+        // Auto-hide success message after 3 seconds
+        setTimeout(() => setSuccess(false), 3000)
         return
       }
       
@@ -37,25 +48,27 @@ export default function CreateSquad() {
       const weeklyTargetMist = BigInt(parseFloat(formData.weeklyTarget) * 1_000_000_000)
       
       tx.moveCall({
-        target: `${CONTRACTS.PACKAGE_ID}::${CONTRACTS.SQUAD_MODULE}::create_squad`,
+        package: CONTRACTS.PACKAGE_ID,
+        module: CONTRACTS.SQUAD_MODULE,
+        function: 'create_squad',
         arguments: [
-          tx.pure.vector('u8', Array.from(new TextEncoder().encode(formData.name))),
+          tx.pure.string(formData.name),
           tx.pure.u64(weeklyTargetMist),
-          tx.object('0x6'), // Clock object ID
+          tx.object('0x6'), // Clock object
         ],
       })
 
       signAndExecute(
-        { transaction: tx },
+        {
+          transaction: tx,
+        },
         {
           onSuccess: (result) => {
             console.log('Squad created successfully:', result)
             // Reset form
             setFormData({ name: '', weeklyTarget: '0.005', description: '' })
-            // Refresh the page to show the new squad
-            setTimeout(() => {
-              window.location.reload()
-            }, 1000)
+            setSuccess(true)
+            setTimeout(() => setSuccess(false), 3000)
           },
           onError: (error) => {
             console.error('Error creating squad:', error)
@@ -214,6 +227,14 @@ export default function CreateSquad() {
               'Create Squad'
             )}
           </button>
+          
+          {/* Success Message */}
+          {success && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+              <div className="text-green-800 font-semibold mb-1">🎉 Squad Created Successfully!</div>
+              <p className="text-green-600 text-sm">Your new squad is ready for members to join.</p>
+            </div>
+          )}
         </form>
       </div>
 
